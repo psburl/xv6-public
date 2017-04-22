@@ -14,6 +14,7 @@ struct {
 
 static struct proc *initproc;
 
+int total_tickets = 0;
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
@@ -137,8 +138,20 @@ growproc(int n)
 // Create a new process copying p as the parent.
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.
+
 int
 fork(void)
+{
+  return fork_lottery(DEFAULT_PROC_TICKETS);
+}
+
+int get_valid_tickets_number(int quantity)
+{
+  return quantity;
+}
+
+int
+fork_lottery(int number_of_tickets)
 {
   int i, pid;
   struct proc *np;
@@ -158,7 +171,8 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
-
+  np->tickets = get_valid_tickets_number(number_of_tickets);
+  total_tickets += np->tickets;
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -266,7 +280,7 @@ wait(void)
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(proc, &ptable.lock);  //DOC: wait-sleep
   }
-}
+} 
 
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
@@ -280,32 +294,50 @@ void
 scheduler(void)
 {
   struct proc *p;
-
+  int drawn_number = 0;
+  int proc_ticket_acumulator;
+  int current_ticket_initial_id;
+  int current_ticket_final_id;
+  
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
+    proc_ticket_acumulator = 0;
+
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
+
+       if(p->state != RUNNABLE)
         continue;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&cpu->scheduler, p->context);
-      switchkvm();
+        current_ticket_initial_id = proc_ticket_acumulator;
+        proc_ticket_acumulator += p->tickets;
+        current_ticket_final_id = proc_ticket_acumulator;
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      proc = 0;
+        if(drawn_number < current_ticket_initial_id 
+        || drawn_number > current_ticket_final_id){
+          continue;
+        }
+
+        // Switch to chosen process.  It is the process's job
+        // to release ptable.lock and then reacquire it
+        // before jumping back to us.
+        proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
+        swtch(&cpu->scheduler, p->context);
+        switchkvm();
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        proc = 0;
     }
-    release(&ptable.lock);
 
+    release(&ptable.lock);
+    drawn_number++;
+    drawn_number %= total_tickets + 1;
   }
 }
 
