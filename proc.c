@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "traps.h"
 
 struct {
   struct spinlock lock;
@@ -14,7 +15,7 @@ struct {
 
 static struct proc *initproc;
 
-int total_tickets = 0;
+int total_number_of_tickets = 0;
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
@@ -135,9 +136,15 @@ growproc(int n)
   return 0;
 }
 
-// Create a new process copying p as the parent.
-// Sets up stack to return as if from system call.
-// Caller must set state of returned proc to RUNNABLE.
+int get_valid_tickets_number(int quantity)
+{
+  int valid_quantity = quantity;
+  if(quantity < MIN_NUMBER_OF_TICKETS)
+    valid_quantity = MIN_NUMBER_OF_TICKETS;
+  if(quantity > MAX_NUMBER_OF_TICKETS)
+    valid_quantity = MAX_NUMBER_OF_TICKETS;	
+  return valid_quantity;
+}
 
 int
 fork(void)
@@ -145,11 +152,9 @@ fork(void)
   return fork_lottery(DEFAULT_PROC_TICKETS);
 }
 
-int get_valid_tickets_number(int quantity)
-{
-  return quantity;
-}
-
+// Create a new process copying p as the parent.
+// Sets up stack to return as if from system call.
+// Caller must set state of returned proc to RUNNABLE.
 int
 fork_lottery(int number_of_tickets)
 {
@@ -172,7 +177,7 @@ fork_lottery(int number_of_tickets)
   np->parent = proc;
   *np->tf = *proc->tf;
   np->tickets = get_valid_tickets_number(number_of_tickets);
-  total_tickets += np->tickets;
+  total_number_of_tickets += np->tickets;
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -282,6 +287,18 @@ wait(void)
   }
 } 
 
+
+int 
+draw_number(void){
+    
+    if(total_number_of_tickets == 0)
+      return 0;
+    
+    int aleatory_number = 796742L;
+    aleatory_number = (aleatory_number * ticks * ticks);
+    return  aleatory_number % total_number_of_tickets;
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -298,13 +315,13 @@ scheduler(void)
   int proc_ticket_acumulator;
   int current_ticket_initial_id;
   int current_ticket_final_id;
-  
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
     proc_ticket_acumulator = 0;
-
+    drawn_number = draw_number();
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
@@ -312,10 +329,14 @@ scheduler(void)
        if(p->state != RUNNABLE)
         continue;
 
+        // update tickets ids range based in acumulator 
+        // of previous proccess
         current_ticket_initial_id = proc_ticket_acumulator;
         proc_ticket_acumulator += p->tickets;
         current_ticket_final_id = proc_ticket_acumulator;
 
+        // jump to next proccess if drawn tickets
+        // isn't on current process tickets range
         if(drawn_number < current_ticket_initial_id 
         || drawn_number > current_ticket_final_id){
           continue;
@@ -333,11 +354,10 @@ scheduler(void)
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         proc = 0;
+        break;
     }
 
     release(&ptable.lock);
-    drawn_number++;
-    drawn_number %= total_tickets + 1;
   }
 }
 
