@@ -146,10 +146,20 @@ int get_valid_tickets_number(int quantity)
   return valid_quantity;
 }
 
+unsigned long next=1;
+int randomGen(int rand_max){
+   next = next * 1103515245 + 12345;
+   int rand=((unsigned)(next/65536) % 32768);
+   //above are the default implemenation of random generator with random max value 32768
+   //need to map it to the 
+   int result =rand % rand_max+1;
+   return result;
+}
+
 int
 fork(void)
 {
-  return fork_lottery(DEFAULT_PROC_TICKETS);
+  return fork_lottery(randomGen(MAX_NUMBER_OF_TICKETS));
 }
 
 // Create a new process copying p as the parent.
