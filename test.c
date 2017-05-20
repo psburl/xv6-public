@@ -4,7 +4,7 @@
 #include "traps.h"
 #include "param.h"
 
-#define N 10
+#define N 4
 
 unsigned long next=1;
 
@@ -37,7 +37,6 @@ void new_fork(unsigned int tickets){
     }
 
     if(pid > 0){
-
         for(int i = 0; i < 2; i++){
           for(int j = 0; j < lcg_rand(); j++)
              for(int k = 0; k < j; k++)
@@ -50,17 +49,10 @@ void new_fork(unsigned int tickets){
     exit();
 }
 
-void
-test(void)
-{
- 
-}
-
 int
 main(void)
 {
   printf(1, "test\n");
   new_fork(lcg_rand());
-  printf(1, "finished!\n");
   exit();
 }

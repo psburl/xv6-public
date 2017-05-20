@@ -320,9 +320,8 @@ get_total_runnable_tickets(void){
     return sum;
 }
 
-
-
-unsigned int lcg_rand()
+unsigned 
+int lcg_rand()
 {
     return ((unsigned long )ticks * 279470273UL) % 4294967291UL;
 }
