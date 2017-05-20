@@ -3,6 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
+#include "param.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -183,7 +184,7 @@ fork1(void)
 {
   int pid;
 
-  pid = fork();
+  pid = fork(DEFAULT_PROC_TICKETS);
   if(pid == -1)
     panic("fork");
   return pid;

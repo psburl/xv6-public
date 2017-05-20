@@ -8,6 +8,7 @@
 #include "spinlock.h"
 #include "traps.h"
 
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -27,6 +28,31 @@ pinit(void)
 {
   initlock(&ptable.lock, "ptable");
 }
+
+void 
+SetAsRunnable(struct proc * p)
+{
+  p->state = RUNNABLE;
+}
+
+void
+SetAsEmbryo(struct proc * p)
+{
+  p->state = EMBRYO;
+}
+
+void
+SetAsRunning(struct proc* p)
+{
+  p->state = RUNNING;
+}
+
+void
+SetAsUnused(struct proc* p)
+{
+  p->state = UNUSED;
+}
+
 
 //PAGEBREAK: 32
 // Look in the process table for an UNUSED proc.
@@ -49,14 +75,14 @@ allocproc(void)
   return 0;
 
 found:
-  p->state = EMBRYO;
+  SetAsEmbryo(p);
   p->pid = nextpid++;
 
   release(&ptable.lock);
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
-    p->state = UNUSED;
+    SetAsUnused(p);
     return 0;
   }
   sp = p->kstack + KSTACKSIZE;
@@ -111,7 +137,7 @@ userinit(void)
   // because the assignment might not be atomic.
   acquire(&ptable.lock);
 
-  p->state = RUNNABLE;
+  SetAsRunnable(p);;
 
   release(&ptable.lock);
 }
@@ -146,27 +172,8 @@ int get_valid_tickets_number(int quantity)
   return valid_quantity;
 }
 
-unsigned long next=1;
-int randomGen(int rand_max){
-   next = next * 1103515245 + 12345;
-   int rand=((unsigned)(next/65536) % 32768);
-   //above are the default implemenation of random generator with random max value 32768
-   //need to map it to the 
-   int result =rand % rand_max+1;
-   return result;
-}
-
 int
-fork(void)
-{
-  return fork_lottery(randomGen(MAX_NUMBER_OF_TICKETS));
-}
-
-// Create a new process copying p as the parent.
-// Sets up stack to return as if from system call.
-// Caller must set state of returned proc to RUNNABLE.
-int
-fork_lottery(int number_of_tickets)
+fork(int tickets)
 {
   int i, pid;
   struct proc *np;
@@ -180,13 +187,13 @@ fork_lottery(int number_of_tickets)
   if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
     kfree(np->kstack);
     np->kstack = 0;
-    np->state = UNUSED;
+    SetAsUnused(np);
     return -1;
   }
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
-  np->tickets = get_valid_tickets_number(number_of_tickets);
+  np->tickets = get_valid_tickets_number(tickets);
   total_number_of_tickets += np->tickets;
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -202,7 +209,7 @@ fork_lottery(int number_of_tickets)
 
   acquire(&ptable.lock);
 
-  np->state = RUNNABLE;
+  SetAsRunnable(np);
 
   release(&ptable.lock);
 
@@ -280,7 +287,7 @@ wait(void)
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
-        p->state = UNUSED;
+        SetAsUnused(p);
         release(&ptable.lock);
         return pid;
       }
@@ -298,15 +305,37 @@ wait(void)
 } 
 
 
+int
+get_total_runnable_tickets(void){
+
+    struct proc *p;
+    int sum =0;
+    acquire(&ptable.lock);
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+       if(p->state != RUNNABLE)
+          continue;
+        sum+= p->tickets;
+    }
+    release(&ptable.lock);
+    return sum;
+}
+
+
+
+unsigned int lcg_rand()
+{
+    return ((unsigned long )ticks * 279470273UL) % 4294967291UL;
+}
+
 int 
 draw_number(void){
-    
-    if(total_number_of_tickets == 0)
+  
+    int total_runnable = get_total_runnable_tickets();
+
+    if(total_runnable == 0)
       return 0;
     
-    int aleatory_number = 796742L;
-    aleatory_number = (aleatory_number * ticks * ticks);
-    return  aleatory_number % total_number_of_tickets;
+    return  lcg_rand(lcg_rand()%124)%total_runnable;
 }
 
 //PAGEBREAK: 42
@@ -317,59 +346,60 @@ draw_number(void){
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-void
-scheduler(void)
-{
-  struct proc *p;
-  int drawn_number = 0;
-  int proc_ticket_acumulator;
-  int current_ticket_initial_id;
-  int current_ticket_final_id;
+  void
+  scheduler(void)
+  {
+    struct proc *p;
+    int drawn_number = 0;
+    int proc_ticket_acumulator;
+    int current_ticket_initial_id;
+    int current_ticket_final_id;
 
-  for(;;){
-    // Enable interrupts on this processor.
-    sti();
 
-    proc_ticket_acumulator = 0;
-    drawn_number = draw_number();
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    for(;;){
+      // Enable interrupts on this processor.
+      sti();
 
-       if(p->state != RUNNABLE)
-        continue;
+      proc_ticket_acumulator = 0;
+      drawn_number = draw_number();
+      // Loop over process table looking for process to run.
+      acquire(&ptable.lock);
+      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
 
-        // update tickets ids range based in acumulator 
-        // of previous proccess
-        current_ticket_initial_id = proc_ticket_acumulator;
-        proc_ticket_acumulator += p->tickets;
-        current_ticket_final_id = proc_ticket_acumulator;
-
-        // jump to next proccess if drawn tickets
-        // isn't on current process tickets range
-        if(drawn_number < current_ticket_initial_id 
-        || drawn_number > current_ticket_final_id){
+        if(p->state != RUNNABLE)
           continue;
-        }
 
-        // Switch to chosen process.  It is the process's job
-        // to release ptable.lock and then reacquire it
-        // before jumping back to us.
-        proc = p;
-        switchuvm(p);
-        p->state = RUNNING;
-        swtch(&cpu->scheduler, p->context);
-        switchkvm();
+          // update tickets ids range based in acumulator 
+          // of previous proccess
+          current_ticket_initial_id = proc_ticket_acumulator;
+          proc_ticket_acumulator += p->tickets;
+          current_ticket_final_id = proc_ticket_acumulator;
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        proc = 0;
-        break;
+          // jump to next proccess if drawn tickets
+          // isn't on current process tickets range
+          if(drawn_number < current_ticket_initial_id 
+          || drawn_number > current_ticket_final_id){
+            continue;
+          }
+
+          // Switch to chosen process.  It is the process's job
+          // to release ptable.lock and then reacquire it
+          // before jumping back to us.
+          proc = p;
+          switchuvm(p);
+          SetAsRunning(p);
+          swtch(&cpu->scheduler, p->context);
+          switchkvm();
+
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          proc = 0;
+          break;
+      }
+
+      release(&ptable.lock);
     }
-
-    release(&ptable.lock);
   }
-}
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -474,7 +504,7 @@ wakeup1(void *chan)
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan)
-      p->state = RUNNABLE;
+      SetAsRunnable(p);;
 }
 
 // Wake up all processes sleeping on chan.
@@ -500,7 +530,7 @@ kill(int pid)
       p->killed = 1;
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
-        p->state = RUNNABLE;
+        SetAsRunnable(p);;
       release(&ptable.lock);
       return 0;
     }

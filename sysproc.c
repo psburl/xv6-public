@@ -7,13 +7,14 @@
 #include "mmu.h"
 #include "proc.h"
 
+
 int
-sys_fork(void)
+sys_fork(int tickets)
 {
  // int argtickets; 
  // argint(0,&argtickets);
  // return fork_lottery(argtickets);
- return fork();
+ return fork(DEFAULT_PROC_TICKETS);
 }
 
 int

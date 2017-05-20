@@ -2,58 +2,65 @@
 #include "stat.h"
 #include "user.h"
 #include "traps.h"
+#include "param.h"
 
-#define N 3
+#define N 10
 
 unsigned long next=1;
-int randomGen(int rand_max){
-   next = next * 1103515245 + 12345;
-   int rand=((unsigned)(next/65536) % 32768);
-   //above are the default implemenation of random generator with random max value 32768
-   //need to map it to the 
-   int result =rand % rand_max+1;
-   return result;
+
+unsigned int lcg_rand()
+{
+    return ((unsigned long)next++ * 279470273UL) % 4294967291UL;
+}
+
+void 
+wait_(unsigned int  seed)
+{
+  if(seed<=0)
+    return;
+  seed--;
+  wait_(seed);
+}
+
+int counter = 0;
+
+void new_fork(unsigned int tickets){
+   
+    if(counter >=  N)
+      return;
+
+    counter++;
+    int pid = fork(tickets);
+
+    if(pid == 0){
+      new_fork(lcg_rand());
+    }
+
+    if(pid > 0){
+
+        for(int i = 0; i < 2; i++){
+          for(int j = 0; j < lcg_rand(); j++)
+             for(int k = 0; k < j; k++)
+                  wait_(lcg_rand());
+          printf(1, "%d\n", pid);
+        }
+    }
+
+    wait();
+    exit();
 }
 
 void
 test(void)
 {
-  int n, pid;
-  int c = 0;
-
-  printf(1, "test\n");
-
-  for(n=0; n<N; n++){
-    pid = fork();
-    if(pid < 0){
-      
-    }
-    if(pid == 0){
-      exit();
-    }
-    if(pid > 0){
-
-      if(c < N){
-        int pid2 =fork();
-        if(pid2 == 0){
-          exit();
-        }
-        if(pid2> 0){
-          sleep(randomGen(randomGen(300)));
-          printf(1, "%d\n", pid2);
-        }
-        c++;
-      }
-      sleep(randomGen(randomGen(300)));
-      printf(1, "%d\n", pid);
-    }
-  }
+ 
 }
 
 int
 main(void)
 {
-  test();
+  printf(1, "test\n");
+  new_fork(lcg_rand());
   printf(1, "finished!\n");
   exit();
 }

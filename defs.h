@@ -9,6 +9,8 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct runnableManager;
+
 
 // bio.c
 void            binit(void);
@@ -105,8 +107,7 @@ int             pipewrite(struct pipe*, char*, int);
 // proc.c
 void            exit(void);
 int             get_valid_tickets_number(int quantity);
-int             fork(void);
-int             fork_lottery(int number_of_tickets);
+int             fork(int tickets);
 int             growproc(int);
 int             kill(int);
 void            pinit(void);
