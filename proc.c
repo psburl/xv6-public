@@ -195,6 +195,8 @@ fork(int tickets)
   *np->tf = *proc->tf;
   np->tickets = get_valid_tickets_number(tickets);
   total_number_of_tickets += np->tickets;
+  np->stride = CONST_STRIDE / np->tickets;
+  np->position = 0;
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -305,38 +307,6 @@ wait(void)
 } 
 
 
-int
-get_total_runnable_tickets(void){
-
-    struct proc *p;
-    int sum =0;
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-       if(p->state != RUNNABLE)
-          continue;
-        sum+= p->tickets;
-    }
-    release(&ptable.lock);
-    return sum;
-}
-
-unsigned 
-int lcg_rand()
-{
-    return ((unsigned long )ticks * 279470273UL) % 4294967291UL;
-}
-
-int 
-draw_number(void){
-  
-    int total_runnable = get_total_runnable_tickets();
-
-    if(total_runnable == 0)
-      return 0;
-    
-    return  lcg_rand(lcg_rand()%124)%total_runnable;
-}
-
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -349,18 +319,14 @@ draw_number(void){
   scheduler(void)
   {
     struct proc *p;
-    int drawn_number = 0;
-    int proc_ticket_acumulator;
-    int current_ticket_initial_id;
-    int current_ticket_final_id;
-
 
     for(;;){
+
+      struct proc *selected;
+      double lowestPosition = -1;
       // Enable interrupts on this processor.
       sti();
 
-      proc_ticket_acumulator = 0;
-      drawn_number = draw_number();
       // Loop over process table looking for process to run.
       acquire(&ptable.lock);
       for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
@@ -368,32 +334,23 @@ draw_number(void){
         if(p->state != RUNNABLE)
           continue;
 
-          // update tickets ids range based in acumulator 
-          // of previous proccess
-          current_ticket_initial_id = proc_ticket_acumulator;
-          proc_ticket_acumulator += p->tickets;
-          current_ticket_final_id = proc_ticket_acumulator;
+        double position = p->position;
 
-          // jump to next proccess if drawn tickets
-          // isn't on current process tickets range
-          if(drawn_number < current_ticket_initial_id 
-          || drawn_number > current_ticket_final_id){
-            continue;
-          }
+        if(lowestPosition == -1 || position < lowestPosition){
+          selected = p;
+          lowestPosition = position;
 
-          // Switch to chosen process.  It is the process's job
-          // to release ptable.lock and then reacquire it
-          // before jumping back to us.
-          proc = p;
-          switchuvm(p);
-          SetAsRunning(p);
-          swtch(&cpu->scheduler, p->context);
-          switchkvm();
+        }
+      }
 
-          // Process is done running for now.
-          // It should have changed its p->state before coming back.
-          proc = 0;
-          break;
+      if(lowestPosition != -1){
+        proc = selected;
+        switchuvm(selected);
+        SetAsRunning(selected);
+        swtch(&cpu->scheduler, selected->context);
+        switchkvm();
+        selected->position += selected->stride;
+        proc = 0;
       }
 
       release(&ptable.lock);
