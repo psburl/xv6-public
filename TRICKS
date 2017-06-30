@@ -120,7 +120,7 @@ setting np->state to RUNNABLE.  The following
 is not a correct way to do this:
 
 	int
-	fork(void)
+	fork(int tickets)
 	{
 	  ...
 	  np->state = RUNNABLE;

@@ -7,9 +7,9 @@ struct proc;
 struct rtcdate;
 struct spinlock;
 struct sleeplock;
+
 struct stat;
 struct superblock;
-struct runnableManager;
 
 
 // bio.c
@@ -106,7 +106,6 @@ int             pipewrite(struct pipe*, char*, int);
 //PAGEBREAK: 16
 // proc.c
 void            exit(void);
-int             get_valid_tickets_number(int quantity);
 int             fork(int tickets);
 int             growproc(int);
 int             kill(int);
@@ -119,6 +118,8 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+int             cps(void);
+int             cht(int pid, int tickets);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

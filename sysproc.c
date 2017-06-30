@@ -7,14 +7,10 @@
 #include "mmu.h"
 #include "proc.h"
 
-
 int
 sys_fork(int tickets)
 {
- // int argtickets; 
- // argint(0,&argtickets);
- // return fork_lottery(argtickets);
- return fork(DEFAULT_PROC_TICKETS);
+  return fork(tickets);
 }
 
 int
@@ -92,4 +88,22 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+int
+sys_cps(void)
+{
+  return cps();
+}
+
+int
+sys_cht(void)
+{
+  int pid, tickets;
+  if(argint(0, &pid) < 0)
+    return -1;
+  if(argint(1, &tickets) < 0)
+    return -1;
+  
+  return cht(pid, tickets);
 }

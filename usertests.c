@@ -348,7 +348,7 @@ pipe1(void)
     close(fds[0]);
     wait();
   } else {
-    printf(1, "fork(DEFAULT_PROC_TICKETS) failed\n");
+    printf(1, "fork(DEFAULT_PROC_TICKETS); failed\n");
     exit();
   }
   printf(1, "pipe1 ok\n");

@@ -6,8 +6,6 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-#include "traps.h"
-
 
 struct {
   struct spinlock lock;
@@ -16,8 +14,8 @@ struct {
 
 static struct proc *initproc;
 
-int total_number_of_tickets = 0;
 int nextpid = 1;
+
 extern void forkret(void);
 extern void trapret(void);
 
@@ -53,10 +51,9 @@ SetAsUnused(struct proc* p)
   p->state = UNUSED;
 }
 
-
 //PAGEBREAK: 32
 // Look in the process table for an UNUSED proc.
-// If found, change state to EMBRYO and initialize
+// If found, change state to EMBRYO and initializesrc refspec master matches more than one.
 // state required to run in the kernel.
 // Otherwise return 0.
 static struct proc*
@@ -75,14 +72,15 @@ allocproc(void)
   return 0;
 
 found:
-  SetAsEmbryo(p);
+  //p->tickets = 10;
+  p->state = EMBRYO;
   p->pid = nextpid++;
 
   release(&ptable.lock);
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
-    SetAsUnused(p);
+    p->state = UNUSED;
     return 0;
   }
   sp = p->kstack + KSTACKSIZE;
@@ -137,7 +135,7 @@ userinit(void)
   // because the assignment might not be atomic.
   acquire(&ptable.lock);
 
-  SetAsRunnable(p);;
+  p->state = RUNNABLE;
 
   release(&ptable.lock);
 }
@@ -162,22 +160,16 @@ growproc(int n)
   return 0;
 }
 
-int get_valid_tickets_number(int quantity)
-{
-  int valid_quantity = quantity;
-  if(quantity < MIN_NUMBER_OF_TICKETS)
-    valid_quantity = MIN_NUMBER_OF_TICKETS;
-  if(quantity > MAX_NUMBER_OF_TICKETS)
-    valid_quantity = MAX_NUMBER_OF_TICKETS;	
-  return valid_quantity;
-}
 
+// Create a new process copying p as the parent.
+// Sets up stack to return as if from system call.
+// Caller must set state of returned proc to RUNNABLE.
 int
 fork(int tickets)
 {
   int i, pid;
   struct proc *np;
-
+  tickets = tickets < 0 ? -tickets : tickets;
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
@@ -187,16 +179,13 @@ fork(int tickets)
   if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
     kfree(np->kstack);
     np->kstack = 0;
-    SetAsUnused(np);
+    np->state = UNUSED;
     return -1;
   }
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
-  np->tickets = get_valid_tickets_number(tickets);
-  total_number_of_tickets += np->tickets;
-  np->stride = CONST_STRIDE / np->tickets;
-  np->position = 0;
+
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -211,8 +200,10 @@ fork(int tickets)
 
   acquire(&ptable.lock);
 
-  SetAsRunnable(np);
-
+  np->state = RUNNABLE;
+  np->tickets = tickets;
+  np->position = 0;
+  np->stride = CONST_STRIDE/tickets;
   release(&ptable.lock);
 
   return pid;
@@ -289,7 +280,7 @@ wait(void)
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
-        SetAsUnused(p);
+        p->state = UNUSED;
         release(&ptable.lock);
         return pid;
       }
@@ -304,8 +295,26 @@ wait(void)
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(proc, &ptable.lock);  //DOC: wait-sleep
   }
-} 
+}
 
+int 
+random_number(int seed)
+{
+    return (unsigned long)(seed * 4827110398420394UL) % 2147483647UL;
+}
+
+int
+get_tickets_number(void)
+{
+  struct proc *p;
+  int sum = 0;
+  
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    if(p->state == RUNNABLE)
+      sum += p->tickets;
+
+  return sum;
+}
 
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
@@ -315,10 +324,10 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-  void
-  scheduler(void)
-  {
-    struct proc *p;
+void
+scheduler(void)
+{
+ struct proc *p;
 
     for(;;){
 
@@ -352,7 +361,7 @@ wait(void)
 
       release(&ptable.lock);
     }
-  }
+}
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -457,7 +466,7 @@ wakeup1(void *chan)
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan)
-      SetAsRunnable(p);;
+      p->state = RUNNABLE;
 }
 
 // Wake up all processes sleeping on chan.
@@ -483,7 +492,7 @@ kill(int pid)
       p->killed = 1;
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
-        SetAsRunnable(p);;
+        p->state = RUNNABLE;
       release(&ptable.lock);
       return 0;
     }
@@ -519,7 +528,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %s %s", p->pid, state, p->name);
+    cprintf("%d %s %s %d", p->pid, state, p->name, p->tickets);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
       for(i=0; i<10 && pc[i] != 0; i++)
@@ -527,4 +536,49 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+int
+cps(void)
+{
+  struct proc *p;
+
+  sti(); //Enable interruptions
+  acquire(&ptable.lock);
+
+  cprintf("name \t pid \t tickets \t state \n");
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+    if(p->state == RUNNING)
+      cprintf("%s \t %d \t %d %s \t RUNNING \t\n", p->name, p->pid, p->tickets, p->tickets < 1000 ? "\t" : "");
+    else if(p->state == SLEEPING)
+      cprintf("%s \t %d \t %d %s \t SLEEPING \t\n", p->name, p->pid, p->tickets, p->tickets < 1000 ? "\t" : "");  
+    else if(p->state == RUNNABLE)
+      cprintf("%s \t %d \t %d %s \t RUNNABLE \t\n", p->name, p->pid, p->tickets,  p->tickets < 1000 ? "\t" : "");     
+
+  }
+
+  release(&ptable.lock);
+  return 22;
+}
+
+int 
+cht(int pid, int ntickets)
+{
+  struct proc *p;
+
+  sti();
+  acquire(&ptable.lock);
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+    if(p->pid == pid)
+    {
+      p->tickets = ntickets;
+      p->stride = CONST_STRIDE/ntickets;
+      break;
+    }
+  }
+  release(&ptable.lock);
+  return pid;
 }

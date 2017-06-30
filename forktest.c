@@ -6,7 +6,7 @@
 #include "user.h"
 #include "param.h"
 
-#define N  1000
+#define N  1000 
 
 void
 printf(int fd, char *s, ...)
