@@ -4,23 +4,7 @@
 #include "traps.h"
 #include "param.h"
 
-#define N 4
-
-unsigned long next=1;
-
-unsigned int lcg_rand()
-{
-    return ((unsigned long)next++ * 279470273UL) % 4294967291UL;
-}
-
-void 
-wait_(unsigned int  seed)
-{
-  if(seed<=0)
-    return;
-  seed--;
-  wait_(seed);
-}
+#define N 10
 
 int counter = 0;
 
@@ -30,32 +14,19 @@ void new_fork(unsigned int tickets){
       return;
 
     counter++;
-
-    int g;
-     for( g = 0; g < 3; g++)
-        tickets = tickets*counter;
-
-    int pid = fork(tickets);
-
-    int i,j, k ;
-
+    int pid = fork(1);
+    cht(pid, tickets);
     if(pid == 0){
-      new_fork(lcg_rand()%1000);
+      new_fork(tickets+100);
     }
-
     if(pid > 0){
-        printf(1, "start process %d tickets : %d\n", pid, tickets);
-        for( i = 0; i < 20; i++){
-             for( j = 0; j < 10; j++){
-             for( k = 0; k < 2000000; k++){
-               printf(1, "");
-             }
+        for(int i = 0; i < 1012; i++){
+          for(int j = 0; j < 13829; j++){
+             printf(1, "");
+          }
         }
-            printf(1, "running process %d tickets : %d\n", pid, tickets);
-        }
-         printf(1, "fiished process %d tickets : %d\n", pid, tickets);
     }
-
+    printf(1, "Returning process %d with %d tickets\n", pid, tickets);
     wait();
     exit();
 }
@@ -64,6 +35,7 @@ int
 main(void)
 {
   printf(1, "test\n");
-  new_fork(lcg_rand()%1000);
+  new_fork(100);
+
   exit();
 }
