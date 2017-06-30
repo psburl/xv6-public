@@ -334,12 +334,9 @@ wait(void)
         if(p->state != RUNNABLE)
           continue;
 
-        double position = p->position;
-
-        if(lowestPosition == -1 || position < lowestPosition){
+        if(lowestPosition == -1 || p->position < lowestPosition){
           selected = p;
-          lowestPosition = position;
-
+          lowestPosition = p->position;
         }
       }
 

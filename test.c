@@ -30,19 +30,30 @@ void new_fork(unsigned int tickets){
       return;
 
     counter++;
+
+    int g;
+     for( g = 0; g < 3; g++)
+        tickets = tickets*counter;
+
     int pid = fork(tickets);
 
+    int i,j, k ;
+
     if(pid == 0){
-      new_fork(lcg_rand());
+      new_fork(lcg_rand()%1000);
     }
 
     if(pid > 0){
-        for(int i = 0; i < 2; i++){
-          for(int j = 0; j < lcg_rand(); j++)
-             for(int k = 0; k < j; k++)
-                  wait_(lcg_rand());
-          printf(1, "%d\n", pid);
+        printf(1, "start process %d tickets : %d\n", pid, tickets);
+        for( i = 0; i < 20; i++){
+             for( j = 0; j < 10; j++){
+             for( k = 0; k < 2000000; k++){
+               printf(1, "");
+             }
         }
+            printf(1, "running process %d tickets : %d\n", pid, tickets);
+        }
+         printf(1, "fiished process %d tickets : %d\n", pid, tickets);
     }
 
     wait();
@@ -53,6 +64,6 @@ int
 main(void)
 {
   printf(1, "test\n");
-  new_fork(lcg_rand());
+  new_fork(lcg_rand()%1000);
   exit();
 }
